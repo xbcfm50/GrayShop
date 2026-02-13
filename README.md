@@ -4,10 +4,19 @@ Offline aplikacija (FastAPI + SQLite) za praćenje računa, mjesečnih obračuna
 
 ## Pokretanje
 
+### Linux / macOS
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
+python -m pip install -r requirements.txt
+python main.py
+```
+
+### Windows PowerShell
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
 python main.py
 ```
 
@@ -28,3 +37,12 @@ Svi podaci se spremaju u `data.db`.
 ## Napomena o proširenju
 
 Model `utility_bills` ima pripremljenu točku proširenja za budući `apartment_id` bez implementacije multi-stan ponašanja u v1.
+
+## Rješavanje problema
+
+- Ako dobijete grešku tipa `ValueError: 'not' is not a valid parameter name`, vjerojatno je instaliran stari `pydantic` (v1). Pokrenite:
+
+```bash
+python -m pip install --upgrade "pydantic>=2.10,<3"
+python -m pip install -r requirements.txt
+```

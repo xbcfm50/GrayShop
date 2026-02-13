@@ -6,6 +6,13 @@ from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
+from pydantic import __version__ as PYDANTIC_VERSION
+
+if int(PYDANTIC_VERSION.split(".", maxsplit=1)[0]) < 2:
+    raise RuntimeError(
+        "Potrebna je pydantic>=2. Instalirajte ovisnosti iz requirements.txt (npr. `python -m pip install -r requirements.txt`)."
+    )
+
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
