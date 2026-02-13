@@ -1,0 +1,70 @@
+{% extends 'base.html' %}
+{% block content %}
+<h2>Postavke</h2>
+{% if error %}<p class="error">{{ error }}</p>{% endif %}
+<form method="post" action="/settings/save">
+    <label>Najamnina
+        <input type="number" name="rent_amount" step="0.01" min="0" value="{{ settings.rent_amount }}" required>
+    </label>
+    <label>Dan obračuna (1-28)
+        <input type="number" name="billing_day" min="1" max="28" value="{{ settings.billing_day }}" required>
+    </label>
+    <label>Aktivna godina
+        <input type="number" name="active_year" min="2000" max="2100" value="{{ settings.active_year }}" required>
+    </label>
+    <button type="submit">Spremi postavke</button>
+</form>
+
+<h3>Tipovi režija</h3>
+<table>
+    <tr><th>Šifra</th><th>Naziv</th><th>Status</th><th>Akcija</th></tr>
+    {% for t in utility_types %}
+    <tr>
+        <td>{{ t.code }}</td>
+        <td>{{ t.name_hr }}</td>
+        <td>{% if t.is_active %}Aktivan{% else %}Neaktivan{% endif %}</td>
+        <td>
+            {% if t.is_active %}
+            <form method="post" action="/settings/utility-type/{{ t.id }}/deactivate"><button type="submit">Deaktiviraj</button></form>
+            {% endif %}
+        </td>
+    </tr>
+    {% endfor %}
+</table>
+
+<h4>Dodaj tip režije</h4>
+<form method="post" action="/settings/utility-type/add">
+    <label>Šifra <input type="text" name="code" required></label>
+    <label>Naziv (hr) <input type="text" name="name_hr" required></label>
+    <button type="submit">Dodaj</button>
+</form>
+
+<h3>Stanovi</h3>
+<table>
+    <tr><th>Naziv</th><th>Status</th><th>Akcija</th></tr>
+    {% for a in apartments %}
+    <tr>
+        <td>{{ a.name }}</td>
+        <td>{% if a.is_active %}Aktivan{% else %}Neaktivan{% endif %}</td>
+        <td>
+            {% if a.is_active %}
+            <form method="post" action="/settings/apartment/{{ a.id }}/deactivate"><button type="submit">Deaktiviraj</button></form>
+            {% endif %}
+        </td>
+    </tr>
+    {% endfor %}
+</table>
+
+<h4>Dodaj stan</h4>
+<form method="post" action="/settings/apartment/add">
+    <label>Naziv stana <input type="text" name="name" required></label>
+    <button type="submit">Dodaj stan</button>
+</form>
+
+<h3>Backup</h3>
+<p><a href="/backup/export">Preuzmi data.db</a></p>
+<form method="post" action="/backup/import" enctype="multipart/form-data">
+    <input type="file" name="db_file" accept=".db" required>
+    <button type="submit">Uvezi bazu i restartaj</button>
+</form>
+{% endblock %}

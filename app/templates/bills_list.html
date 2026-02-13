@@ -1,0 +1,26 @@
+{% extends 'base.html' %}
+{% block content %}
+<h2>Računi</h2>
+<p><a href="/bills/new">+ Novi račun</a></p>
+<table>
+    <tr><th>ID</th><th>Stan</th><th>Tip</th><th>Mjesec potrošnje</th><th>Datum primitka</th><th>Iznos</th><th>Obračunski mjesec</th><th>Plaćen</th><th>Akcije</th></tr>
+    {% for b in bills %}
+    <tr>
+        <td>{{ b.id }}</td>
+        <td>{{ apartment_map.get(b.apartment_id, "-") }}</td>
+        <td>{{ utility_map[b.utility_type] }}</td>
+        <td>{{ month_label_hr(b.consumption_month) }}</td>
+        <td>{{ format_date_hr(b.received_date) }}</td>
+        <td>{{ format_money_hr(b.amount) }}</td>
+        <td>{{ month_label_hr(b.billing_month) }}</td>
+        <td>{% if b.is_paid %}Da{% else %}Ne{% endif %}</td>
+        <td>
+            <a href="/bills/{{ b.id }}/edit">Uredi</a>
+            {% if b.billing_month not in closed_months %}
+            <form method="post" action="/bills/{{ b.id }}/delete" style="display:inline"><button type="submit">Obriši</button></form>
+            {% endif %}
+        </td>
+    </tr>
+    {% endfor %}
+</table>
+{% endblock %}
