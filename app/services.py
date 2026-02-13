@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
+from typing import Optional
 
 from sqlalchemy import Select, case, func, inspect, select, text
 from sqlalchemy.orm import Session, joinedload
@@ -36,7 +37,7 @@ class ExpectedRow:
     utility_name: str
     consumption_month: date
     received: bool
-    first_received_date: date | None
+    first_received_date: Optional[date]
     charged: bool
 
 
@@ -60,13 +61,13 @@ def month_label_hr(value: date) -> str:
     return f"{HR_MONTHS[value.month - 1]}-{value.year}"
 
 
-def format_date_hr(value: date | None) -> str:
+def format_date_hr(value: Optional[date]) -> str:
     if not value:
         return ""
     return value.strftime("%d.%m.%Y")
 
 
-def format_money_hr(value: Decimal | None) -> str:
+def format_money_hr(value: Optional[Decimal]) -> str:
     if value is None:
         return "0,00"
     return f"{value:.2f}".replace(".", ",")

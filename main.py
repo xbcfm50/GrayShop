@@ -5,6 +5,7 @@ import tempfile
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
+from typing import Dict, List, Optional, Union
 
 from pydantic import __version__ as PYDANTIC_VERSION
 
@@ -81,7 +82,7 @@ def month_choice_label(month_number: int) -> str:
     return HR_MONTHS[month_number - 1].capitalize()
 
 
-def month_select_options() -> list[dict[str, str | int]]:
+def month_select_options() -> List[Dict[str, Union[str, int]]]:
     return [{"value": month, "label": month_choice_label(month)} for month in range(1, 13)]
 
 
@@ -173,9 +174,9 @@ def parse_consumption_month(month_value: str, year_value: str, fallback_raw: str
                 error="Odabrani stan nije valjan ili više nije aktivan.",
             ),
             status_code=400,
-        )
-
-                bill=form_bill,
+    bill_id: Optional[int],
+    apartment_id: Optional[int],
+    bill_id: Optional[int] = Form(default=None),
                 apartments=apartments,
                 month_options=month_select_options(),
                 year_options=year_select_options(settings.active_year),

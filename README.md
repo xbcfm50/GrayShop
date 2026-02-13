@@ -48,3 +48,6 @@ Model `utility_bills` ima pripremljenu točku proširenja za budući `apartment_
 python -m pip install --upgrade "pydantic>=2.10,<3"
 python -m pip install -r requirements.txt
 ```
+
+
+- Ako dobijete `SyntaxError: invalid syntax` na anotacijama tipova, provjerite verziju: `python --version`. Preporučeno je Python 3.11+ i pokretanje s tom verzijom (npr. `py -3.11 -m venv .venv` na Windowsu).
