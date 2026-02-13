@@ -39,6 +39,28 @@
     <button type="submit">Dodaj</button>
 </form>
 
+<h3>Stanovi</h3>
+<table>
+    <tr><th>Naziv</th><th>Status</th><th>Akcija</th></tr>
+    {% for a in apartments %}
+    <tr>
+        <td>{{ a.name }}</td>
+        <td>{% if a.is_active %}Aktivan{% else %}Neaktivan{% endif %}</td>
+        <td>
+            {% if a.is_active %}
+            <form method="post" action="/settings/apartment/{{ a.id }}/deactivate"><button type="submit">Deaktiviraj</button></form>
+            {% endif %}
+        </td>
+    </tr>
+    {% endfor %}
+</table>
+
+<h4>Dodaj stan</h4>
+<form method="post" action="/settings/apartment/add">
+    <label>Naziv stana <input type="text" name="name" required></label>
+    <button type="submit">Dodaj stan</button>
+</form>
+
 <h3>Backup</h3>
 <p><a href="/backup/export">Preuzmi data.db</a></p>
 <form method="post" action="/backup/import" enctype="multipart/form-data">

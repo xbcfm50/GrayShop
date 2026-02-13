@@ -8,11 +8,11 @@ from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
 
-from sqlalchemy import Select, case, func, select
+from sqlalchemy import Select, case, func, inspect, select, text
 from sqlalchemy.orm import Session, joinedload
 
 from app.db import DB_PATH, Base, engine
-from app.models import BillingMonth, Setting, UtilityBill, UtilityType
+from app.models import Apartment, BillingMonth, Setting, UtilityBill, UtilityType
 
 HR_MONTHS = [
     "siječanj",
@@ -88,9 +88,29 @@ def current_billing_month(today: date, billing_day: int) -> date:
 
 def init_db(session: Session) -> None:
     Base.metadata.create_all(bind=engine)
+
+    inspector = inspect(engine)
+    utility_columns = {column["name"] for column in inspector.get_columns("utility_bills")}
+    if "apartment_id" not in utility_columns:
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE utility_bills ADD COLUMN apartment_id INTEGER"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_utility_bills_apartment_id ON utility_bills(apartment_id)"))
+
     has_settings = session.scalar(select(func.count()).select_from(Setting))
     if not has_settings:
         session.add(Setting(rent_amount=Decimal("0.00"), billing_day=10, active_year=date.today().year))
+
+    has_default_apartment = session.scalar(select(func.count()).select_from(Apartment))
+    if not has_default_apartment:
+        session.add(Apartment(name="Stan 1", is_active=True))
+        session.flush()
+
+    default_apartment = session.scalar(select(Apartment).order_by(Apartment.id).limit(1))
+    if default_apartment is not None:
+        bills_without_apartment = session.scalars(select(UtilityBill).where(UtilityBill.apartment_id.is_(None))).all()
+        for bill in bills_without_apartment:
+            bill.apartment_id = default_apartment.id
+
     for code, name in [
         ("electricity", "Električna energija"),
         ("water", "Voda"),

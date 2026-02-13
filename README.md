@@ -27,6 +27,8 @@ Svi podaci se spremaju u `data.db`.
 
 - Nadzorna ploča s trenutnim obračunskim mjesecom.
 - Unos/izmjena/brisanje računa (brisanje je blokirano za zatvorene mjesece).
+- Unos mjeseca potrošnje kroz jednostavne padajuće izbornike (mjesec + godina).
+- Podrška za više stanova (dodavanje i deaktivacija stanova u postavkama).
 - Izračun obračunskog mjeseca prema `billing_day`.
 - Zatvaranje/ponovno otvaranje mjeseca transakcijski (zatvaranje označava račune kao plaćene).
 - Mjesečni obračuni s najamninom i režijama.

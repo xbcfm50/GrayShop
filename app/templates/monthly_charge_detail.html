@@ -4,9 +4,10 @@
 <p><strong>Najamnina za:</strong> {{ month_label_hr(rent_month) }}</p>
 <p><strong>Status:</strong> {% if month_record and month_record.is_closed %}Zatvoren{% else %}Otvoren{% endif %}</p>
 <table>
-    <tr><th>Tip</th><th>Iznos</th><th>Plaćen</th></tr>
+    <tr><th>Stan</th><th>Tip</th><th>Iznos</th><th>Plaćen</th></tr>
     {% for b in bills %}
     <tr>
+        <td>{{ apartment_map.get(b.apartment_id, "-") }}</td>
         <td>{{ utility_map[b.utility_type] }}</td>
         <td>{{ format_money_hr(b.amount) }}</td>
         <td>{% if b.is_paid %}Da{% else %}Ne{% endif %}</td>

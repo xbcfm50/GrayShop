@@ -3,26 +3,43 @@
 <h2>{% if bill %}Uredi račun{% else %}Novi račun{% endif %}</h2>
 {% if error %}<p class="error">{{ error }}</p>{% endif %}
 <form method="post" action="/bills/save">
-    {% if bill %}<input type="hidden" name="bill_id" value="{{ bill.id }}">{% endif %}
-    <label>Tip režije
-        <select name="utility_type" required>
-            {% for t in utility_types %}
-            <option value="{{ t.code }}" {% if bill and bill.utility_type == t.code %}selected{% endif %}>{{ t.name_hr }}</option>
+    {% if bill and bill.id %}<input type="hidden" name="bill_id" value="{{ bill.id }}">{% endif %}
+
+    <label>Stan
+        <select name="apartment_id" required>
+            {% for a in apartments %}
+            <option value="{{ a.id }}" {% if bill and bill.apartment_id == a.id %}selected{% elif not bill and loop.first %}selected{% endif %}>{{ a.name }}</option>
             {% endfor %}
         </select>
     </label>
-    <label>Mjesec potrošnje
-        <input type="month" name="consumption_month" value="{% if bill %}{{ bill.consumption_month.strftime('%Y-%m') }}{% endif %}" required>
+
+    <label>Tip režije
+        <select name="utility_type" required>
+            {% for t in utility_types %}
+            <option value="{{ t.code }}" {% if bill and bill.utility_type == t.code %}selected{% elif not bill and loop.first %}selected{% endif %}>{{ t.name_hr }}</option>
+            {% endfor %}
+        </select>
     </label>
+
+    <label>Mjesec potrošnje</label>
+    <div class="month-select-group">
+        <select name="consumption_month_month" required>
+            <option value="">Mjesec</option>
+            {% for m in month_options %}
+            <option value="{{ m.value }}" {% if bill and bill.consumption_month_month and bill.consumption_month_month|int == m.value %}selected{% elif bill and bill.consumption_month and not (bill.consumption_month is string) and bill.consumption_month.month == m.value %}selected{% endif %}>{{ m.label }}</option>
+            {% endfor %}
+        </select>
+        <select name="consumption_month_year" required>
+            <option value="">Godina</option>
+            {% for y in year_options %}
+            <option value="{{ y }}" {% if bill and bill.consumption_month_year and bill.consumption_month_year|int == y %}selected{% elif bill and bill.consumption_month and not (bill.consumption_month is string) and bill.consumption_month.year == y %}selected{% endif %}>{{ y }}</option>
+            {% endfor %}
+        </select>
+    </div>
+
     <label>Datum primitka
-        <input type="date" name="received_date" value="{% if bill %}{{ bill.received_date.isoformat() }}{% endif %}" max="{{ request.state.today if request.state.today else '' }}" required>
-    </label>
-    <label>Iznos
-        <input type="number" name="amount" step="0.01" min="0.01" value="{% if bill %}{{ bill.amount }}{% endif %}" required>
-    </label>
-    <label>Napomena
-        <textarea name="note">{% if bill and bill.note %}{{ bill.note }}{% endif %}</textarea>
-    </label>
+
+
     <button type="submit">Spremi</button>
 </form>
 <script>
