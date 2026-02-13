@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import shutil
+import sys
 import tempfile
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
@@ -8,6 +9,9 @@ from pathlib import Path
 from typing import Dict, List, Optional, Union
 
 from pydantic import __version__ as PYDANTIC_VERSION
+
+if sys.version_info < (3, 9):
+    raise RuntimeError("Potreban je Python 3.9+ za pokretanje aplikacije. Preporučeno: Python 3.11.")
 
 if int(PYDANTIC_VERSION.split(".", maxsplit=1)[0]) < 2:
     raise RuntimeError(
