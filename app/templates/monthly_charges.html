@@ -1,0 +1,15 @@
+{% extends 'base.html' %}
+{% block content %}
+<h2>Mjesečni obračuni</h2>
+<table>
+    <tr><th>Mjesec</th><th>Status</th><th>Zatvoreno</th><th>Detalji</th></tr>
+    {% for m in months %}
+    <tr>
+        <td>{{ month_label_hr(m.billing_month) }}</td>
+        <td>{% if m.is_closed %}Zatvoren{% else %}Otvoren{% endif %}</td>
+        <td>{{ m.closed_at.strftime('%d.%m.%Y %H:%M') if m.closed_at else '-' }}</td>
+        <td><a href="/monthly-charges/{{ m.billing_month.isoformat() }}">Prikaži</a></td>
+    </tr>
+    {% endfor %}
+</table>
+{% endblock %}

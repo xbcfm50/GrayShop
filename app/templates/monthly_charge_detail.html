@@ -1,0 +1,24 @@
+{% extends 'base.html' %}
+{% block content %}
+<h2>Detalj obračuna: {{ month_label_hr(billing_month) }}</h2>
+<p><strong>Najamnina za:</strong> {{ month_label_hr(rent_month) }}</p>
+<p><strong>Status:</strong> {% if month_record and month_record.is_closed %}Zatvoren{% else %}Otvoren{% endif %}</p>
+<table>
+    <tr><th>Tip</th><th>Iznos</th><th>Plaćen</th></tr>
+    {% for b in bills %}
+    <tr>
+        <td>{{ utility_map[b.utility_type] }}</td>
+        <td>{{ format_money_hr(b.amount) }}</td>
+        <td>{% if b.is_paid %}Da{% else %}Ne{% endif %}</td>
+    </tr>
+    {% endfor %}
+</table>
+<p><strong>Ukupno režije:</strong> {{ format_money_hr(total_utility) }}</p>
+<p><strong>Najamnina:</strong> {{ format_money_hr(rent_amount) }}</p>
+<p><strong>Ukupno za naplatu:</strong> {{ format_money_hr(grand_total) }}</p>
+{% if month_record and month_record.is_closed %}
+<form method="post" action="/monthly-charges/{{ billing_month.isoformat() }}/reopen"><button>Ponovno otvori mjesec</button></form>
+{% else %}
+<form method="post" action="/monthly-charges/{{ billing_month.isoformat() }}/close"><button>Zatvori mjesec</button></form>
+{% endif %}
+{% endblock %}
