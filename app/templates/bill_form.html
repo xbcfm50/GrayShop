@@ -38,15 +38,24 @@
     </div>
 
     <label>Datum primitka
+        <input type="date" name="received_date" value="{% if bill and bill.received_date %}{% if bill.received_date is string %}{{ bill.received_date }}{% else %}{{ bill.received_date.isoformat() }}{% endif %}{% endif %}" required>
+    </label>
 
+    <label>Iznos
+        <input type="text" name="amount" inputmode="decimal" placeholder="npr. 123,45" value="{% if bill and bill.amount is not none %}{{ bill.amount }}{% endif %}" required>
+    </label>
 
+    <label>Napomena
+        <textarea name="note">{% if bill and bill.note %}{{ bill.note }}{% endif %}</textarea>
+    </label>
     <button type="submit">Spremi</button>
 </form>
 <script>
-const monthInput = document.querySelector('input[name="consumption_month"]');
-monthInput.addEventListener('change', () => {
-    if (monthInput.value) {
-        monthInput.value = monthInput.value;
+const amountInput = document.querySelector('input[name="amount"]');
+const form = document.querySelector('form[action="/bills/save"]');
+form.addEventListener('submit', () => {
+    if (amountInput.value) {
+        amountInput.value = amountInput.value.replace(',', '.');
     }
 });
 </script>

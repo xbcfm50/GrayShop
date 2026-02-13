@@ -67,6 +67,17 @@ def ctx(request: Request, **kwargs):
 
 
 def parse_date(raw: str, field: str) -> date:
+    raw = (raw or "").strip()
+    for pattern in ("%Y-%m-%d", "%d.%m.%Y"):
+        try:
+            return datetime.strptime(raw, pattern).date()
+        except ValueError:
+            pass
+    raise HTTPException(status_code=400, detail=f"Neispravan datum za {field}.")
+
+
+def parse_month(raw: str, field: str) -> date:
+    raw = (raw or "").strip()
     candidates = [
         ("%Y-%m", lambda d: date(d.year, d.month, 1)),
         ("%Y-%m-%d", lambda d: date(d.year, d.month, 1)),
@@ -80,6 +91,14 @@ def parse_date(raw: str, field: str) -> date:
         except ValueError:
             pass
     raise HTTPException(status_code=400, detail=f"Neispravan mjesec za {field}.")
+
+
+def parse_amount(raw: str) -> Decimal:
+    normalized = (raw or "").strip().replace(" ", "").replace(",", ".")
+    try:
+        return Decimal(normalized)
+    except InvalidOperation as exc:
+        raise HTTPException(status_code=400, detail="Neispravan iznos.") from exc
 
 
 def month_choice_label(month_number: int) -> str:
@@ -105,12 +124,45 @@ def parse_consumption_month(month_value: str, year_value: str, fallback_raw: str
     return parse_month(fallback_raw, field)
 
 
+@app.get("/")
+def dashboard(request: Request, session: Session = Depends(get_session)):
+    settings = get_settings(session)
+    curr = current_billing_month(date.today(), settings.billing_day)
+    bills_in_curr = session.scalar(select(func.count()).select_from(UtilityBill).where(UtilityBill.billing_month == curr))
+    closed_curr = session.scalar(
+        select(func.count()).select_from(BillingMonth).where(BillingMonth.billing_month == curr, BillingMonth.is_closed.is_(True))
+    )
+    late_unreceived = [r for r in expected_rows(session, settings.active_year) if not r.received]
+    return templates.TemplateResponse(
+        "dashboard.html",
+        ctx(
+            request,
+            settings=settings,
+            current_billing_month=curr,
+            rent_display_month=prev_month(curr),
+            bills_in_curr=bills_in_curr,
+            is_current_closed=bool(closed_curr),
+            missing_count=len(late_unreceived),
+        ),
+    )
+
+
+@app.get("/bills")
+def bills_list(request: Request, session: Session = Depends(get_session)):
+    bills = session.scalars(select(UtilityBill).order_by(UtilityBill.received_date.desc(), UtilityBill.id.desc())).all()
+    utility_map = {u.code: u.name_hr for u in session.scalars(select(UtilityType)).all()}
     apartment_map = {a.id: a.name for a in session.scalars(select(Apartment)).all()}
+    closed_months = {m.billing_month for m in session.scalars(select(BillingMonth).where(BillingMonth.is_closed.is_(True))).all()}
     return templates.TemplateResponse(
         "bills_list.html",
         ctx(request, bills=bills, utility_map=utility_map, apartment_map=apartment_map, closed_months=closed_months),
     )
+
+
+@app.get("/bills/new")
+def bill_new(request: Request, session: Session = Depends(get_session)):
     settings = get_settings(session)
+    utility_types = session.scalars(select(UtilityType).where(UtilityType.is_active.is_(True)).order_by(UtilityType.name_hr)).all()
     apartments = session.scalars(select(Apartment).where(Apartment.is_active.is_(True)).order_by(Apartment.name)).all()
     return templates.TemplateResponse(
         "bill_form.html",
@@ -125,7 +177,15 @@ def parse_consumption_month(month_value: str, year_value: str, fallback_raw: str
             error=None,
         ),
     )
+
+
+@app.get("/bills/{bill_id}/edit")
+def bill_edit(bill_id: int, request: Request, session: Session = Depends(get_session)):
+    bill = session.get(UtilityBill, bill_id)
+    if not bill:
+        raise HTTPException(status_code=404, detail="Račun nije pronađen.")
     settings = get_settings(session)
+    utility_types = session.scalars(select(UtilityType).where(UtilityType.is_active.is_(True)).order_by(UtilityType.name_hr)).all()
     apartments = session.scalars(select(Apartment).order_by(Apartment.name)).all()
     return templates.TemplateResponse(
         "bill_form.html",
@@ -140,17 +200,50 @@ def parse_consumption_month(month_value: str, year_value: str, fallback_raw: str
             error=None,
         ),
     )
-    apartment_id: int | None,
+
+
+def build_bill_form_data(
+    bill_id: Optional[int],
+    apartment_id: Optional[int],
+    utility_type: str,
+    consumption_month: str,
     consumption_month_month: str,
     consumption_month_year: str,
+    received_date: str,
+    amount: str,
+    note: str,
+):
+    return {
+        "id": bill_id,
         "apartment_id": apartment_id,
+        "utility_type": utility_type,
+        "consumption_month": consumption_month,
         "consumption_month_month": consumption_month_month,
         "consumption_month_year": consumption_month_year,
+        "received_date": received_date,
+        "amount": amount,
+        "note": note,
+    }
+
+
+@app.post("/bills/save")
+def bill_save(
+    request: Request,
+    bill_id: Optional[int] = Form(default=None),
     apartment_id: int = Form(...),
+    utility_type: str = Form(...),
     consumption_month: str = Form(default=""),
     consumption_month_month: str = Form(default=""),
     consumption_month_year: str = Form(default=""),
+    received_date: str = Form(...),
+    amount: str = Form(...),
+    note: str = Form(default=""),
+    session: Session = Depends(get_session),
+):
+    settings = get_settings(session)
+    utility_types = session.scalars(select(UtilityType).where(UtilityType.is_active.is_(True)).order_by(UtilityType.name_hr)).all()
     apartments = session.scalars(select(Apartment).where(Apartment.is_active.is_(True)).order_by(Apartment.name)).all()
+    active_codes = {item.code for item in utility_types}
     active_apartment_ids = {item.id for item in apartments}
     form_bill = build_bill_form_data(
         bill_id,
@@ -178,202 +271,101 @@ def parse_consumption_month(month_value: str, year_value: str, fallback_raw: str
                 error="Odabrani stan nije valjan ili više nije aktivan.",
             ),
             status_code=400,
-    bill_id: Optional[int],
-    apartment_id: Optional[int],
-    bill_id: Optional[int] = Form(default=None),
-                apartments=apartments,
-                month_options=month_select_options(),
-                year_options=year_select_options(settings.active_year),
-        consumption = parse_consumption_month(consumption_month_month, consumption_month_year, consumption_month, "mjesec potrošnje")
-                bill=form_bill,
-                apartments=apartments,
-                month_options=month_select_options(),
-                year_options=year_select_options(settings.active_year),
-                bill=form_bill,
-                apartments=apartments,
-                month_options=month_select_options(),
-                year_options=year_select_options(settings.active_year),
-                bill=form_bill,
-                apartments=apartments,
-                month_options=month_select_options(),
-                year_options=year_select_options(settings.active_year),
-                bill=form_bill,
-                apartments=apartments,
-                month_options=month_select_options(),
-                year_options=year_select_options(settings.active_year),
-                bill=form_bill,
-                apartments=apartments,
-                month_options=month_select_options(),
-                year_options=year_select_options(settings.active_year),
-    bill.apartment_id = apartment_id
-    apartment_map = {a.id: a.name for a in session.scalars(select(Apartment)).all()}
-            apartment_map=apartment_map,
-    apartments = session.scalars(select(Apartment).order_by(Apartment.name)).all()
-    return templates.TemplateResponse("settings.html", ctx(request, settings=settings, utility_types=types, apartments=apartments, error=None))
-    apartments = session.scalars(select(Apartment).order_by(Apartment.name)).all()
-        return templates.TemplateResponse("settings.html", ctx(request, settings=settings, utility_types=types, apartments=apartments, error="Neispravan iznos najamnine."), status_code=400)
-        return templates.TemplateResponse("settings.html", ctx(request, settings=settings, utility_types=types, apartments=apartments, error="Dan obračuna mora biti između 1 i 28."), status_code=400)
-@app.post("/settings/apartment/add")
-def apartment_add(name: str = Form(...), session: Session = Depends(get_session)):
-    apartment_name = name.strip()
-    if not apartment_name:
-        raise HTTPException(status_code=400, detail="Naziv stana je obavezan.")
-    exists = session.scalar(select(func.count()).select_from(Apartment).where(Apartment.name == apartment_name))
-    if exists:
-        raise HTTPException(status_code=400, detail="Stan s tim nazivom već postoji.")
-    session.add(Apartment(name=apartment_name, is_active=True))
-    session.commit()
-    return RedirectResponse(url="/settings", status_code=303)
+        )
 
-
-@app.post("/settings/apartment/{apartment_id}/deactivate")
-def apartment_deactivate(apartment_id: int, session: Session = Depends(get_session)):
-    apartment = session.get(Apartment, apartment_id)
-    if not apartment:
-        raise HTTPException(status_code=404, detail="Stan nije pronađen.")
-    active_count = session.scalar(select(func.count()).select_from(Apartment).where(Apartment.is_active.is_(True)))
-    if apartment.is_active and active_count <= 1:
-        raise HTTPException(status_code=400, detail="Mora postojati barem jedan aktivan stan.")
-    apartment.is_active = False
-    session.commit()
-    return RedirectResponse(url="/settings", status_code=303)
-
-
-    apartments = session.scalars(select(Apartment).order_by(Apartment.name)).all()
-    return templates.TemplateResponse("settings.html", ctx(request, settings=get_settings(session), utility_types=types, apartments=apartments, error=message if not ok else None))
-    late_unreceived = [r for r in expected_rows(session, settings.active_year) if not r.received]
-    return templates.TemplateResponse(
-        "dashboard.html",
-        ctx(
-            request,
-            settings=settings,
-            current_billing_month=curr,
-            rent_display_month=prev_month(curr),
-            bills_in_curr=bills_in_curr,
-            is_current_closed=bool(closed_curr),
-            missing_count=len(late_unreceived),
-        ),
-    )
-
-
-@app.get("/bills")
-def bills_list(request: Request, session: Session = Depends(get_session)):
-    bills = session.scalars(select(UtilityBill).order_by(UtilityBill.received_date.desc(), UtilityBill.id.desc())).all()
-    utility_map = {u.code: u.name_hr for u in session.scalars(select(UtilityType)).all()}
-    closed_months = {m.billing_month for m in session.scalars(select(BillingMonth).where(BillingMonth.is_closed.is_(True))).all()}
-    return templates.TemplateResponse("bills_list.html", ctx(request, bills=bills, utility_map=utility_map, closed_months=closed_months))
-
-
-@app.get("/bills/new")
-def bill_new(request: Request, session: Session = Depends(get_session)):
-    utility_types = session.scalars(select(UtilityType).where(UtilityType.is_active.is_(True)).order_by(UtilityType.name_hr)).all()
-    return templates.TemplateResponse("bill_form.html", ctx(request, bill=None, utility_types=utility_types, settings=get_settings(session), error=None))
-
-
-@app.get("/bills/{bill_id}/edit")
-def bill_edit(bill_id: int, request: Request, session: Session = Depends(get_session)):
-    bill = session.get(UtilityBill, bill_id)
-    if not bill:
-        raise HTTPException(status_code=404, detail="Račun nije pronađen.")
-    utility_types = session.scalars(select(UtilityType).where(UtilityType.is_active.is_(True)).order_by(UtilityType.name_hr)).all()
-    return templates.TemplateResponse("bill_form.html", ctx(request, bill=bill, utility_types=utility_types, settings=get_settings(session), error=None))
-
-
-def build_bill_form_data(
-    bill_id: int | None,
-    utility_type: str,
-    consumption_month: str,
-    received_date: str,
-    amount: str,
-    note: str,
-):
-    return {
-        "id": bill_id,
-        "utility_type": utility_type,
-        "consumption_month": consumption_month,
-        "received_date": received_date,
-        "amount": amount,
-        "note": note,
-    }
-
-
-@app.post("/bills/save")
-def bill_save(
-    request: Request,
-    bill_id: int | None = Form(default=None),
-    utility_type: str = Form(...),
-    consumption_month: str = Form(...),
-    received_date: str = Form(...),
-    amount: str = Form(...),
-    note: str = Form(default=""),
-    session: Session = Depends(get_session),
-):
-    settings = get_settings(session)
-    utility_types = session.scalars(select(UtilityType).where(UtilityType.is_active.is_(True)).order_by(UtilityType.name_hr)).all()
-    active_codes = {item.code for item in utility_types}
     if utility_type not in active_codes:
         return templates.TemplateResponse(
             "bill_form.html",
             ctx(
                 request,
-                bill=build_bill_form_data(bill_id, utility_type, consumption_month, received_date, amount, note),
+                bill=form_bill,
                 utility_types=utility_types,
+                apartments=apartments,
+                month_options=month_select_options(),
+                year_options=year_select_options(settings.active_year),
                 settings=settings,
                 error="Odabrani tip režije nije valjan ili više nije aktivan.",
             ),
             status_code=400,
         )
     try:
-        consumption = parse_month(consumption_month, "mjesec potrošnje")
+        consumption = parse_consumption_month(consumption_month_month, consumption_month_year, consumption_month, "mjesec potrošnje")
         received = parse_date(received_date, "datum primitka")
-            ctx(
-                request,
-                bill=build_bill_form_data(bill_id, utility_type, consumption_month, received_date, amount, note),
-                utility_types=utility_types,
-                settings=settings,
-                error=exc.detail,
-            ),
+        amount_decimal = parse_amount(amount)
+    except HTTPException as exc:
         return templates.TemplateResponse(
             "bill_form.html",
             ctx(
                 request,
-                bill=build_bill_form_data(bill_id, utility_type, consumption_month, received_date, amount, note),
+                bill=form_bill,
                 utility_types=utility_types,
+                apartments=apartments,
+                month_options=month_select_options(),
+                year_options=year_select_options(settings.active_year),
+                settings=settings,
+                error=exc.detail,
+            ),
+            status_code=400,
+        )
+
+    if not validate_month_first(consumption):
+        return templates.TemplateResponse(
+            "bill_form.html",
+            ctx(
+                request,
+                bill=form_bill,
+                utility_types=utility_types,
+                apartments=apartments,
+                month_options=month_select_options(),
+                year_options=year_select_options(settings.active_year),
                 settings=settings,
                 error="Mjesec potrošnje mora biti prvi dan mjeseca.",
             ),
             status_code=400,
         )
+    if received > date.today():
         return templates.TemplateResponse(
             "bill_form.html",
             ctx(
                 request,
-                bill=build_bill_form_data(bill_id, utility_type, consumption_month, received_date, amount, note),
+                bill=form_bill,
                 utility_types=utility_types,
+                apartments=apartments,
+                month_options=month_select_options(),
+                year_options=year_select_options(settings.active_year),
                 settings=settings,
                 error="Datum primitka ne smije biti u budućnosti.",
             ),
             status_code=400,
         )
+    if amount_decimal <= 0:
         return templates.TemplateResponse(
             "bill_form.html",
             ctx(
                 request,
-                bill=build_bill_form_data(bill_id, utility_type, consumption_month, received_date, amount, note),
+                bill=form_bill,
                 utility_types=utility_types,
+                apartments=apartments,
+                month_options=month_select_options(),
+                year_options=year_select_options(settings.active_year),
                 settings=settings,
                 error="Iznos mora biti pozitivan.",
             ),
             status_code=400,
         )
+
+    billing_month = compute_billing_month(received, settings.billing_day)
     month_status = session.get(BillingMonth, billing_month)
     if month_status and month_status.is_closed and bill_id is None:
         return templates.TemplateResponse(
             "bill_form.html",
             ctx(
                 request,
-                bill=build_bill_form_data(bill_id, utility_type, consumption_month, received_date, amount, note),
+                bill=form_bill,
                 utility_types=utility_types,
+                apartments=apartments,
+                month_options=month_select_options(),
+                year_options=year_select_options(settings.active_year),
                 settings=settings,
                 error="Obračunski mjesec je zatvoren. Prvo ga ponovno otvorite.",
             ),
@@ -393,6 +385,7 @@ def bill_save(
         bill = UtilityBill(created_at=datetime.utcnow())
         session.add(bill)
 
+    bill.apartment_id = apartment_id
     bill.utility_type = utility_type
     bill.consumption_month = consumption
     bill.received_date = received
@@ -434,6 +427,7 @@ def monthly_charge_detail(month: str, request: Request, session: Session = Depen
     settings = get_settings(session)
     bills = session.scalars(select(UtilityBill).where(UtilityBill.billing_month == billing_month).order_by(UtilityBill.utility_type)).all()
     utility_map = {u.code: u.name_hr for u in session.scalars(select(UtilityType)).all()}
+    apartment_map = {a.id: a.name for a in session.scalars(select(Apartment)).all()}
     total_utility = sum((b.amount for b in bills), Decimal("0.00"))
     grand_total = total_utility + settings.rent_amount
     month_record = session.get(BillingMonth, billing_month)
@@ -445,6 +439,7 @@ def monthly_charge_detail(month: str, request: Request, session: Session = Depen
             rent_month=prev_month(billing_month),
             bills=bills,
             utility_map=utility_map,
+            apartment_map=apartment_map,
             total_utility=total_utility,
             rent_amount=settings.rent_amount,
             grand_total=grand_total,
@@ -480,7 +475,8 @@ def expected_bills_page(request: Request, session: Session = Depends(get_session
 def settings_page(request: Request, session: Session = Depends(get_session)):
     settings = get_settings(session)
     types = session.scalars(select(UtilityType).order_by(UtilityType.name_hr)).all()
-    return templates.TemplateResponse("settings.html", ctx(request, settings=settings, utility_types=types, error=None))
+    apartments = session.scalars(select(Apartment).order_by(Apartment.name)).all()
+    return templates.TemplateResponse("settings.html", ctx(request, settings=settings, utility_types=types, apartments=apartments, error=None))
 
 
 @app.post("/settings/save")
@@ -493,12 +489,13 @@ def settings_save(
 ):
     settings = get_settings(session)
     types = session.scalars(select(UtilityType).order_by(UtilityType.name_hr)).all()
+    apartments = session.scalars(select(Apartment).order_by(Apartment.name)).all()
     try:
         rent = Decimal(rent_amount)
     except InvalidOperation:
-        return templates.TemplateResponse("settings.html", ctx(request, settings=settings, utility_types=types, error="Neispravan iznos najamnine."), status_code=400)
+        return templates.TemplateResponse("settings.html", ctx(request, settings=settings, utility_types=types, apartments=apartments, error="Neispravan iznos najamnine."), status_code=400)
     if billing_day < 1 or billing_day > 28:
-        return templates.TemplateResponse("settings.html", ctx(request, settings=settings, utility_types=types, error="Dan obračuna mora biti između 1 i 28."), status_code=400)
+        return templates.TemplateResponse("settings.html", ctx(request, settings=settings, utility_types=types, apartments=apartments, error="Dan obračuna mora biti između 1 i 28."), status_code=400)
 
     settings.rent_amount = rent.quantize(Decimal("0.01"))
     settings.billing_day = billing_day
@@ -528,6 +525,32 @@ def utility_type_deactivate(type_id: int, session: Session = Depends(get_session
     return RedirectResponse(url="/settings", status_code=303)
 
 
+@app.post("/settings/apartment/add")
+def apartment_add(name: str = Form(...), session: Session = Depends(get_session)):
+    apartment_name = name.strip()
+    if not apartment_name:
+        raise HTTPException(status_code=400, detail="Naziv stana je obavezan.")
+    exists = session.scalar(select(func.count()).select_from(Apartment).where(Apartment.name == apartment_name))
+    if exists:
+        raise HTTPException(status_code=400, detail="Stan s tim nazivom već postoji.")
+    session.add(Apartment(name=apartment_name, is_active=True))
+    session.commit()
+    return RedirectResponse(url="/settings", status_code=303)
+
+
+@app.post("/settings/apartment/{apartment_id}/deactivate")
+def apartment_deactivate(apartment_id: int, session: Session = Depends(get_session)):
+    apartment = session.get(Apartment, apartment_id)
+    if not apartment:
+        raise HTTPException(status_code=404, detail="Stan nije pronađen.")
+    active_count = session.scalar(select(func.count()).select_from(Apartment).where(Apartment.is_active.is_(True)))
+    if apartment.is_active and active_count <= 1:
+        raise HTTPException(status_code=400, detail="Mora postojati barem jedan aktivan stan.")
+    apartment.is_active = False
+    session.commit()
+    return RedirectResponse(url="/settings", status_code=303)
+
+
 @app.get("/backup/export")
 def backup_export():
     return FileResponse(DB_PATH, media_type="application/x-sqlite3", filename="data.db")
@@ -541,7 +564,8 @@ def backup_import(request: Request, db_file: UploadFile = File(...), session: Se
         shutil.copyfileobj(db_file.file, f)
     ok, message = import_database(temp_file)
     types = session.scalars(select(UtilityType).order_by(UtilityType.name_hr)).all()
-    return templates.TemplateResponse("settings.html", ctx(request, settings=get_settings(session), utility_types=types, error=message if not ok else None))
+    apartments = session.scalars(select(Apartment).order_by(Apartment.name)).all()
+    return templates.TemplateResponse("settings.html", ctx(request, settings=get_settings(session), utility_types=types, apartments=apartments, error=message if not ok else None))
 
 
 if __name__ == "__main__":

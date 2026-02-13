@@ -58,7 +58,14 @@ python -m pip install -r requirements.txt
 python doctor.py
 ```
 
-Ako dijagnostika javi da je kod zastario, povucite zadnje promjene i napravite novi virtualni env:
+Ako dijagnostika javi zastarjeli kod, prvo možete pokušati automatski popravak:
+
+```powershell
+python doctor.py --fix
+python main.py
+```
+
+Ako ni to ne pomogne, povucite zadnje promjene i napravite novi virtualni env:
 
 ```powershell
 git pull
