@@ -52,7 +52,13 @@ python -m pip install -r requirements.txt
 
 - Ako dobijete `SyntaxError: invalid syntax` na anotacijama tipova, provjerite verziju: `python --version`. Preporučeno je Python 3.11+ i pokretanje s tom verzijom (npr. `py -3.11 -m venv .venv` na Windowsu).
 
-- Ako i dalje vidite grešku `SyntaxError: invalid syntax` na liniji s `apartment_id: int | None`, onda pokrećete stariju verziju koda. Povucite zadnje promjene i napravite novi virtualni env:
+- Ako i dalje vidite grešku `SyntaxError: invalid syntax` na liniji s `apartment_id: int | None`, onda pokrećete stariju verziju koda. Prvo pokrenite dijagnostiku:
+
+```powershell
+python doctor.py
+```
+
+Ako dijagnostika javi da je kod zastario, povucite zadnje promjene i napravite novi virtualni env:
 
 ```powershell
 git pull
