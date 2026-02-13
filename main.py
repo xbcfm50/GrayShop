@@ -61,10 +61,19 @@ def ctx(request: Request, **kwargs):
 
 
 def parse_date(raw: str, field: str) -> date:
-    try:
-        return datetime.strptime(raw, "%Y-%m-%d").date()
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=f"Neispravan datum za {field}.") from exc
+    candidates = [
+        ("%Y-%m", lambda d: date(d.year, d.month, 1)),
+        ("%Y-%m-%d", lambda d: date(d.year, d.month, 1)),
+        ("%m/%Y", lambda d: date(d.year, d.month, 1)),
+        ("%m-%Y", lambda d: date(d.year, d.month, 1)),
+        ("%m.%Y", lambda d: date(d.year, d.month, 1)),
+    ]
+    for pattern, normalize in candidates:
+        try:
+            return normalize(datetime.strptime(raw, pattern).date())
+        except ValueError:
+            pass
+    raise HTTPException(status_code=400, detail=f"Neispravan mjesec za {field}.")
 
 
 def parse_month(raw: str, field: str) -> date:
@@ -120,6 +129,24 @@ def bill_edit(bill_id: int, request: Request, session: Session = Depends(get_ses
     return templates.TemplateResponse("bill_form.html", ctx(request, bill=bill, utility_types=utility_types, settings=get_settings(session), error=None))
 
 
+def build_bill_form_data(
+    bill_id: int | None,
+    utility_type: str,
+    consumption_month: str,
+    received_date: str,
+    amount: str,
+    note: str,
+):
+    return {
+        "id": bill_id,
+        "utility_type": utility_type,
+        "consumption_month": consumption_month,
+        "received_date": received_date,
+        "amount": amount,
+        "note": note,
+    }
+
+
 @app.post("/bills/save")
 def bill_save(
     request: Request,
@@ -133,24 +160,75 @@ def bill_save(
 ):
     settings = get_settings(session)
     utility_types = session.scalars(select(UtilityType).where(UtilityType.is_active.is_(True)).order_by(UtilityType.name_hr)).all()
+    active_codes = {item.code for item in utility_types}
+    if utility_type not in active_codes:
+        return templates.TemplateResponse(
+            "bill_form.html",
+            ctx(
+                request,
+                bill=build_bill_form_data(bill_id, utility_type, consumption_month, received_date, amount, note),
+                utility_types=utility_types,
+                settings=settings,
+                error="Odabrani tip režije nije valjan ili više nije aktivan.",
+            ),
+            status_code=400,
+        )
     try:
         consumption = parse_month(consumption_month, "mjesec potrošnje")
         received = parse_date(received_date, "datum primitka")
-        amount_decimal = Decimal(amount)
-    except (HTTPException, InvalidOperation):
-        return templates.TemplateResponse("bill_form.html", ctx(request, bill=None, utility_types=utility_types, settings=settings, error="Neispravni podaci."), status_code=400)
-
-    if not validate_month_first(consumption):
-        return templates.TemplateResponse("bill_form.html", ctx(request, bill=None, utility_types=utility_types, settings=settings, error="Mjesec potrošnje mora biti prvi dan mjeseca."), status_code=400)
-    if received > date.today():
-        return templates.TemplateResponse("bill_form.html", ctx(request, bill=None, utility_types=utility_types, settings=settings, error="Datum primitka ne smije biti u budućnosti."), status_code=400)
-    if amount_decimal <= 0:
-        return templates.TemplateResponse("bill_form.html", ctx(request, bill=None, utility_types=utility_types, settings=settings, error="Iznos mora biti pozitivan."), status_code=400)
-
-    billing_month = compute_billing_month(received, settings.billing_day)
+            ctx(
+                request,
+                bill=build_bill_form_data(bill_id, utility_type, consumption_month, received_date, amount, note),
+                utility_types=utility_types,
+                settings=settings,
+                error=exc.detail,
+            ),
+        return templates.TemplateResponse(
+            "bill_form.html",
+            ctx(
+                request,
+                bill=build_bill_form_data(bill_id, utility_type, consumption_month, received_date, amount, note),
+                utility_types=utility_types,
+                settings=settings,
+                error="Mjesec potrošnje mora biti prvi dan mjeseca.",
+            ),
+            status_code=400,
+        )
+        return templates.TemplateResponse(
+            "bill_form.html",
+            ctx(
+                request,
+                bill=build_bill_form_data(bill_id, utility_type, consumption_month, received_date, amount, note),
+                utility_types=utility_types,
+                settings=settings,
+                error="Datum primitka ne smije biti u budućnosti.",
+            ),
+            status_code=400,
+        )
+        return templates.TemplateResponse(
+            "bill_form.html",
+            ctx(
+                request,
+                bill=build_bill_form_data(bill_id, utility_type, consumption_month, received_date, amount, note),
+                utility_types=utility_types,
+                settings=settings,
+                error="Iznos mora biti pozitivan.",
+            ),
+            status_code=400,
+        )
     month_status = session.get(BillingMonth, billing_month)
     if month_status and month_status.is_closed and bill_id is None:
-        return templates.TemplateResponse("bill_form.html", ctx(request, bill=None, utility_types=utility_types, settings=settings, error="Obračunski mjesec je zatvoren. Prvo ga ponovno otvorite."), status_code=400)
+        return templates.TemplateResponse(
+            "bill_form.html",
+            ctx(
+                request,
+                bill=build_bill_form_data(bill_id, utility_type, consumption_month, received_date, amount, note),
+                utility_types=utility_types,
+                settings=settings,
+                error="Obračunski mjesec je zatvoren. Prvo ga ponovno otvorite.",
+            ),
+            status_code=400,
+        )
 
     if bill_id:
         bill = session.get(UtilityBill, bill_id)
