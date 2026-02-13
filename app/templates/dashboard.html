@@ -1,0 +1,11 @@
+{% extends 'base.html' %}
+{% block content %}
+<h2>Nadzorna ploča</h2>
+<div class="cards">
+    <div class="card"><strong>Trenutni obračunski mjesec:</strong> {{ month_label_hr(current_billing_month) }}</div>
+    <div class="card"><strong>Mjesec najamnine:</strong> {{ month_label_hr(rent_display_month) }}</div>
+    <div class="card"><strong>Broj računa u obračunskom mjesecu:</strong> {{ bills_in_curr }}</div>
+    <div class="card"><strong>Status mjeseca:</strong> {% if is_current_closed %}ZATVOREN{% else %}OTVOREN{% endif %}</div>
+    <div class="card"><strong>Nedostajućih očekivanih računa:</strong> {{ missing_count }}</div>
+</div>
+{% endblock %}

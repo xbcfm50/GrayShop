@@ -1,0 +1,16 @@
+{% extends 'base.html' %}
+{% block content %}
+<h2>Očekivani računi ({{ year }})</h2>
+<table>
+    <tr><th>Tip režije</th><th>Mjesec potrošnje</th><th>Zaprimljen</th><th>Prvi datum primitka</th><th>Zadužen (plaćen u zatvorenom)</th></tr>
+    {% for r in rows %}
+    <tr class="{% if not r.received %}missing{% endif %}">
+        <td>{{ r.utility_name }}</td>
+        <td>{{ month_label_hr(r.consumption_month) }}</td>
+        <td>{% if r.received %}Da{% else %}Ne{% endif %}</td>
+        <td>{{ format_date_hr(r.first_received_date) if r.first_received_date else '-' }}</td>
+        <td>{% if r.charged %}Da{% else %}Ne{% endif %}</td>
+    </tr>
+    {% endfor %}
+</table>
+{% endblock %}
